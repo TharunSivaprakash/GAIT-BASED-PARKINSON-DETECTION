@@ -1,0 +1,90 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Patient Record — {{ patient_id }}</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body{font-family:Inter,Arial,Helvetica,sans-serif;margin:16px;background:#f6f8fb}
+  .card{background:white;border-radius:10px;padding:16px;margin-bottom:14px;box-shadow:0 3px 8px rgba(10,10,10,0.07)}
+  .badge{padding:3px 8px;border-radius:12px;color:white;font-size:0.8rem}
+  .normal{background:#28a745}
+  .warning{background:#ffc107;color:black}
+  .danger{background:#dc3545}
+</style>
+</head>
+<body>
+  <a href="/">← Back to Dashboard</a>
+  <h2>Patient Record: {{ patient_id }}</h2>
+  <div id="profile" class="card"></div>
+  <div id="summary" class="card"></div>
+  <div class="card"><canvas id="chart" height="200"></canvas></div>
+  <a href="/export_csv/{{ patient_id }}">⬇ Export Raw CSV</a>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCwP2TMafpBZG0HEMz9LIhLu9Gs1JHQVnw",
+  authDomain: "cloud-dbba7.firebaseapp.com",
+  databaseURL: "https://cloud-dbba7-default-rtdb.firebaseio.com",
+  projectId: "cloud-dbba7",
+  storageBucket: "cloud-dbba7.firebasestorage.app",
+  messagingSenderId: "1090679952697",
+  appId: "1:1090679952697:web:039f006bd46511de2d84e8"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const patientId = "{{ patient_id }}";
+
+function badge(gait){
+  if(!gait) return '<span class="badge warning">Unknown</span>';
+  gait = gait.toLowerCase();
+  if(gait.includes("normal")) return `<span class="badge normal">${gait}</span>`;
+  if(gait.includes("parkinson")||gait.includes("spastic")||gait.includes("freezing"))
+     return `<span class="badge danger">${gait}</span>`;
+  return `<span class="badge warning">${gait}</span>`;
+}
+
+const ref = db.ref('patients/' + patientId + '/sessions');
+ref.on('value', snap => {
+  const sessions = snap.val();
+  if(!sessions){document.getElementById('profile').innerText='No data yet';return;}
+  const keys = Object.keys(sessions);
+  const last = sessions[keys[keys.length-1]];
+  document.getElementById('profile').innerHTML = `
+    <b>${last.name || patientId}</b><br>
+    Age: ${last.age || '-'}<br>
+    Device: ${last.device_id || '-'}<br>
+    Last Update: ${last.session_time_iso || '-'}
+  `;
+  document.getElementById('summary').innerHTML = `
+    <b>Gait Pattern:</b> ${badge(last.gait_type)}<br>
+    <b>Average Motion:</b> ${last.avg_motion} m/s²<br>
+    <b>Average EMG:</b> ${last.avg_emg} V<br>
+    <b>FOG Episodes:</b> ${(last.fog_episodes||[]).length}<br><br>
+    <b>Clinical Insight:</b><br>
+    ${last.gait_type === "Normal Gait" ? "Patient exhibits stable walking pattern." :
+      last.gait_type?.includes("Parkinsonian") ? "Signs of rigidity or short shuffling steps detected." :
+      last.gait_type?.includes("Spastic") ? "Possible stiffness or neurological issue; further assessment needed." :
+      last.gait_type?.includes("Freezing") ? "FOG detected — Parkinsonian symptom likely." :
+      last.gait_type?.includes("Antalgic") ? "Possible pain-induced limp or imbalance." :
+      "Requires further observation."}
+  `;
+  // chart
+  const ctx = document.getElementById('chart').getContext('2d');
+  new Chart(ctx,{
+    type:'line',
+    data:{
+      labels:last.plot.times || [],
+      datasets:[
+        {label:'EMG (V)',data:last.plot.emg || [],borderColor:'#dc3545',fill:false},
+        {label:'Motion (m/s²)',data:last.plot.motion || [],borderColor:'#007bff',fill:false}
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true}}}
+  });
+});
+</script>
+</body>
+</html>
